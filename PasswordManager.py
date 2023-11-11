@@ -8,11 +8,13 @@ class PasswordManagerServer:
         self.db_connection = pyodbc.connect(db_connection_string)
         self.db_cursor = self.db_connection.cursor()
 
+        self.server.handle_method("create_user", self.create_user)
+
     def start_server(self):
         self.server.serve_forever()
 
     def create_user(self, req, res, session):
-        pass
+        print("Got here!")
 
     def login_request(self, req, res, session):
         pass

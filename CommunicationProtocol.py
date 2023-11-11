@@ -19,14 +19,15 @@ class CommunicationProtocol:
 
         header_length = 6 + len(self.req_res) + params_length
 
-        byte_arr = bytearray(header_length + len(self.body))
+        body_length = 0 if self.body is None else len(self.body)
+        byte_arr = bytearray(header_length + body_length)
 
         byte_arr[0:3] = self.req_res.encode()
         byte_arr[3:4] = ":".encode()
-        byte_arr[5:9] = header_length.to_bytes(4, 'little')
-        byte_arr[9:10] = ":".encode()
+        byte_arr[4:8] = header_length.to_bytes(4, 'little')
+        byte_arr[8:9] = ":".encode()
 
-        i = 10
+        i = 9
 
         for param in params_list:
             byte_arr[i:i+len(param)+1] = f"{param}:".encode()
@@ -44,16 +45,17 @@ class CommunicationProtocol:
         if req_res != "req" and req_res != "res":
             raise CommunicationProtocolException(byte_arr, "Message does not start with res or req")
 
-        header_length = int.from_bytes(byte_arr[5:9], "little")
+        header_length = int.from_bytes(byte_arr[4:8], "little")
 
-        i = 10
+        i = 9
         params = []
         param = ""
         while i < header_length:
-            if byte_arr[i] == ":".encode():
+            if byte_arr[i] == ord(":"):
                 params.append(param)
                 param = ""
-            param += byte_arr[i].decode()
+            else:
+                param += chr(byte_arr[i])
             i += 1
 
         return CommunicationProtocol(req_res, CommunicationProtocol.params_list_to_dict(params), byte_arr[i:])

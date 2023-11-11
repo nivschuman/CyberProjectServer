@@ -41,7 +41,7 @@ class Server:
     def handle_client(self, client_socket, client_address):
         message = self.receive_message(client_socket, client_address)
 
-        prev_result = None
+        prev_result = message
         for handler in self.handlers:
             prev_result = handler(client_socket, client_address, prev_result)
 
@@ -129,16 +129,19 @@ class CommunicationProtocolServer(SessionServer):
         headers = client_socket.recv(header_length-9)
 
         # get Content-Length header to find length of body
-        headers_list = headers.decode().split[":"]
+        headers_list = headers.decode()
+        headers_list = headers_list.split(":")
+        headers_list.pop(-1)
         regular_expression = re.compile(r"Content-Length=[0-9]+")
         content_length_header = list(filter(regular_expression.match, headers_list))[0]
         content_length = content_length_header.split("=")[1]
+        content_length = int(content_length)
 
         # receive body
         body = client_socket.recv(content_length)
 
         # return complete byte message
-        return req_res + header_length + headers + body
+        return req_res + ":".encode() + header_length_bytes + ":".encode() + headers + body
 
     # turn byte message into CommunicationProtocol object for next handler
     def parse_message(self, client_socket, client_address, message):
