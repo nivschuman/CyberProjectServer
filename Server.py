@@ -49,10 +49,12 @@ class Server:
 
     # turn server on to forever serve
     def serve_forever(self):
+        print(f"Starting Server on host={self.host}, port={self.port}")
         self.server_socket.bind((self.host, self.port))
         while True:
             self.server_socket.listen()
             client_socket, client_address = self.server_socket.accept()
+            print(f"Received Connection from {client_address}")
             client_thread = Thread(target=self.handle_client, args=(client_socket, client_address))
             client_thread.start()
 
