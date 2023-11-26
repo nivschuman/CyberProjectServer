@@ -90,7 +90,7 @@ class PasswordManagerServer:
         elif decrypted_number_bytes != session.data["loginNumber"]:
             res.body = "Failed - incorrect number".encode("ascii")
         else:  # correct number and data is in session
-            # get user id from database todo continue
+            # get user id from database
             user_name = session.data["loginUserName"]
             self.db_cursor.execute(f"SELECT ID From Users WHERE UserName=\'{user_name}\'")
             user_id = self.db_cursor.fetchall()
@@ -98,7 +98,7 @@ class PasswordManagerServer:
             if len(user_id) == 0:
                 res.body = f"Failed - user {user_name} doesn't exist".encode("ascii")
             else:
-                session.data["loggedInUID"] = user_id
+                session.data["loggedInUID"] = user_id[0][0]
                 res.body = "Succeeded".encode("ascii")
 
         res.set_header_value("Content-Length", len(res.body))
