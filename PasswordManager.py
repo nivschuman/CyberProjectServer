@@ -9,7 +9,7 @@ from random import randbytes
 
 class PasswordManagerServer:
     def __init__(self, host, port, db_connection_string):
-        self.server = CommunicationProtocolServer(host, port)
+        self.server = CommunicationProtocolServer(host, port, 10800)  # session ttl is 3 hours
         self.db_connection = pyodbc.connect(db_connection_string)
         self.db_cursor = self.db_connection.cursor()
 

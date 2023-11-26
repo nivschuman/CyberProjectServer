@@ -62,11 +62,18 @@ class Server:
 # Server with Storing Session capabilities
 # todo session cleanup, delete unused sessions
 class SessionServer(Server):
-    def __init__(self, host, port, session_token_length):
+    def __init__(self, host, port, session_token_length, session_ttl):
         super().__init__(host, port)
 
         self.sessions = dict()  # key is session token, value is session object
         self.session_token_length = session_token_length
+        self.session_ttl = session_ttl  # number of seconds that session is allowed to live
+
+        self.session_cleanup_thread = Thread(target=self.remove_sessions)
+
+    def serve_forever(self):
+        self.session_cleanup_thread.start()
+        super().serve_forever()
 
     # generate unique token for new session
     def generate_session_token(self, length):
@@ -95,11 +102,23 @@ class SessionServer(Server):
     def close_session(self, token):
         self.sessions.pop(token)
 
+    def remove_sessions(self):
+        remove_tokens = []
+
+        # find sessions that have expired
+        for token, session in self.sessions.items():
+            if session.seconds_alive() > self.session_ttl:
+                remove_tokens.append(token)
+
+        # remove expired sessions from dictionary
+        for token in remove_tokens:
+            self.sessions.pop(token)
+
 
 # Server which works with the Communication Protocol
 class CommunicationProtocolServer(SessionServer):
-    def __init__(self, host, port):
-        super().__init__(host, port, 8)
+    def __init__(self, host, port, session_ttl):
+        super().__init__(host, port, 8, session_ttl)
 
         self.handlers.append(self.parse_message)
         self.handlers.append(self.session_generator)
