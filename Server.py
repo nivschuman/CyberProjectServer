@@ -67,8 +67,8 @@ class SessionServer(Server):
 
         self.sessions = dict()  # key is session token, value is session object
         self.session_token_length = session_token_length
-        self.session_ttl = session_ttl  # number of seconds that session is allowed to live
 
+        self.session_ttl = session_ttl  # number of seconds that session is allowed to live
         self.session_cleanup_thread = Thread(target=self.remove_sessions)
 
     def serve_forever(self):
@@ -80,7 +80,7 @@ class SessionServer(Server):
         characters = string.ascii_lowercase + string.ascii_uppercase + string.digits
         token = ""
 
-        while token not in self.sessions:
+        while token in self.sessions or token == "":
             token = ""
             for i in range(length):
                 token += characters[randint(0, len(characters)-1)]
@@ -102,6 +102,7 @@ class SessionServer(Server):
     def close_session(self, token):
         self.sessions.pop(token)
 
+    # removal for sessions that have expired
     def remove_sessions(self):
         remove_tokens = []
 
