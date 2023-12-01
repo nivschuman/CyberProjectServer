@@ -7,6 +7,7 @@ from Crypto.PublicKey import RSA
 from random import randbytes
 
 
+# todo remove all sql injections
 class PasswordManagerServer:
     def __init__(self, host, port, db_connection_string):
         self.server = CommunicationProtocolServer(host, port, 10800)  # session ttl is 3 hours
@@ -16,10 +17,15 @@ class PasswordManagerServer:
         self.server.handle_method("create_user", self.create_user)
         self.server.handle_method("login_request", self.login_request)
         self.server.handle_method("login_test", self.login_test)
+        self.server.handle_method("get_password", self.get_password)
+        self.server.handle_method("set_password", self.set_password)
+        self.server.handle_method("delete_password", self.delete_password)
 
     def start_server(self):
         self.server.serve_forever()
 
+    # receive json with publicKey, userName and create such user
+    # returns ascii with info on success or error
     def create_user(self, req, res, session):
         body_str = req.body.decode("ascii")
         body_json = json.loads(body_str)
@@ -27,13 +33,11 @@ class PasswordManagerServer:
         public_key_bytes = base64.b64decode(body_json["publicKey"])
         user_name = body_json["userName"]
 
-        # remove possible sql injection. todo check if this works
-        user_name = user_name.replace("\'", "")
         # check if there already exists a user with given username
         public_key_str = f"0x{public_key_bytes.hex()}"
-        self.db_cursor.execute(f"SELECT UserName, PublicKey From Users WHERE UserName=\'{user_name}\'")
+        self.db_cursor.execute(f"SELECT UserName, PublicKey FROM Users WHERE UserName=\'{user_name}\'")
         user_with_same_username = len(self.db_cursor.fetchall()) != 0
-        self.db_cursor.execute(f"SELECT UserName, PublicKey From Users WHERE PublicKey={public_key_str}")
+        self.db_cursor.execute(f"SELECT UserName, PublicKey FROM Users WHERE PublicKey={public_key_str}")
         user_with_same_public_key = len(self.db_cursor.fetchall()) != 0
 
         if user_with_same_username:
@@ -47,13 +51,14 @@ class PasswordManagerServer:
 
         res.set_header_value("Content-Length", len(res.body))
         res.set_header_value("Method", "create_user")
-        res.set_header_value("Content-Type", "ascii string")
+        res.set_header_value("Content-Type", "ascii")
 
+    # receive username in ascii and return encrypted random 64 bits, no body is returned on error
     def login_request(self, req, res, session):
         user_name = req.body.decode("ascii")
 
         # get user's public key from database
-        self.db_cursor.execute(f"SELECT PublicKey From Users WHERE UserName=\'{user_name}\'")
+        self.db_cursor.execute(f"SELECT PublicKey FROM Users WHERE UserName=\'{user_name}\'")
         public_key_bytes = self.db_cursor.fetchall()
 
         # user does not exists or this was called without a session
@@ -80,10 +85,14 @@ class PasswordManagerServer:
         res.set_header_value("Method", "login_request")
         res.set_header_value("Content-Type", "bytes")
 
+    # receive decrypted 64 bits and if they match bits in session store logged in uid
+    # returns ascii with info for success or failure
     def login_test(self, req, res, session):
         decrypted_number_bytes = req.body
 
-        if session.data.get("loginNumber") is None:
+        if session is None:
+            res.body = "Failed - no session".encode("ascii")
+        elif session.data.get("loginNumber") is None:
             res.body = "Failed - no login number in session".encode("ascii")
         elif session.data.get("loginUserName") is None:
             res.body = "Failed - no login username in session".encode("ascii")
@@ -92,7 +101,7 @@ class PasswordManagerServer:
         else:  # correct number and data is in session
             # get user id from database
             user_name = session.data["loginUserName"]
-            self.db_cursor.execute(f"SELECT ID From Users WHERE UserName=\'{user_name}\'")
+            self.db_cursor.execute(f"SELECT ID FROM Users WHERE UserName=\'{user_name}\'")
             user_id = self.db_cursor.fetchall()
 
             if len(user_id) == 0:
@@ -103,13 +112,127 @@ class PasswordManagerServer:
 
         res.set_header_value("Content-Length", len(res.body))
         res.set_header_value("Method", "login_test")
-        res.set_header_value("Content-Type", "ascii string")
+        res.set_header_value("Content-Type", "ascii")
 
+    # gets ascii string of password source and returns encrypted password, no body if error
     def get_password(self, req, res, session):
-        pass
+        source = req.body.decode("ascii")
 
+        # no session
+        if session is None:
+            res.body = None
+            res.set_header_value("Content-Length", 0)
+            res.set_header_value("Method", "get_password")
+            return
+
+        # user is not logged in
+        if session.data.get("loggedInUID") is None:
+            res.body = None
+            res.set_header_value("Content-Length", 0)
+            res.set_header_value("Method", "get_password")
+            return
+
+        user_id = session.data["loggedInUID"]
+        self.db_cursor.execute(f"SELECT Password FROM Passwords WHERE UserID={user_id} AND Source=\'{source}\'")
+        password = self.db_cursor.fetchall()
+
+        # no password found
+        if len(password) == 0:
+            res.body = None
+            res.set_header_value("Content-Length", 0)
+            res.set_header_value("Method", "get_password")
+            return
+
+        password = password[0][0]
+
+        res.body = password
+        res.set_header_value("Content-Length", len(res.body))
+        res.set_header_value("Method", "get_password")
+        res.set_header_value("Content-Type", "bytes")
+
+    # gets json of source and password encoded in base64, returns ascii if success or failure
     def set_password(self, req, res, session):
-        pass
+        body_str = req.body.decode("ascii")
+        body_json = json.loads(body_str)
 
+        source = body_json["source"]
+        password = base64.b64decode(body_json["password"])
+        password_str = f"0x{password.hex()}"
+
+        # no session
+        if session is None:
+            res.body = "Failed - no session".encode("ascii")
+            res.set_header_value("Content-Length", len(res.body))
+            res.set_header_value("Method", "set_password")
+            res.set_header_value("Content-Type", "ascii")
+            return
+
+        # user is not logged in
+        if session.data.get("loggedInUID") is None:
+            res.body = "Failed - not logged in".encode("ascii")
+            res.set_header_value("Content-Length", len(res.body))
+            res.set_header_value("Method", "set_password")
+            res.set_header_value("Content-Type", "ascii")
+            return
+
+        user_id = session.data["loggedInUID"]
+
+        # password for source already exists
+        self.db_cursor.execute(f"SELECT Password FROM Passwords WHERE Source=\'{source}\' AND UserID={user_id}")
+        password = self.db_cursor.fetchall()
+        if len(password) != 0:
+            res.body = "Failed - password for source already exists".encode("ascii")
+            res.set_header_value("Content-Length", len(res.body))
+            res.set_header_value("Method", "set_password")
+            res.set_header_value("Content-Type", "ascii")
+            return
+
+        # enter into database
+        self.db_cursor.execute(f"INSERT INTO Passwords (Source, Password, UserID) VALUES (\'{source}\', {password_str}, {user_id})")
+        self.db_cursor.commit()
+
+        res.body = "Success".encode("ascii")
+        res.set_header_value("Content-Length", len(res.body))
+        res.set_header_value("Method", "set_password")
+        res.set_header_value("Content-Type", "ascii")
+
+    # gets source and deletes password record with given source. Returns ascii for success or failure
     def delete_password(self, req, res, session):
-        pass
+        source = req.body.decode("ascii")
+
+        # no session
+        if session is None:
+            res.body = "Failed - no session".encode("ascii")
+            res.set_header_value("Content-Length", len(res.body))
+            res.set_header_value("Method", "delete_password")
+            res.set_header_value("Content-Type", "ascii")
+            return
+
+        # user is not logged in
+        if session.data.get("loggedInUID") is None:
+            res.body = "Failed - not logged in".encode("ascii")
+            res.set_header_value("Content-Length", len(res.body))
+            res.set_header_value("Method", "delete_password")
+            res.set_header_value("Content-Type", "ascii")
+            return
+
+        user_id = session.data["loggedInUID"]
+
+        # password for source doesn't exists
+        self.db_cursor.execute(f"SELECT Password FROM Passwords WHERE Source=\'{source}\' AND UserID={user_id}")
+        password = self.db_cursor.fetchall()
+        if len(password) == 0:
+            res.body = "Failed - password for source doesn't exist".encode("ascii")
+            res.set_header_value("Content-Length", len(res.body))
+            res.set_header_value("Method", "delete_password")
+            res.set_header_value("Content-Type", "ascii")
+            return
+
+        # delete password record from database
+        self.db_cursor.execute(f"DELETE FROM Passwords WHERE Source=\'{source}\' AND UserID={user_id}")
+        self.db_cursor.commit()
+
+        res.body = "Success".encode("ascii")
+        res.set_header_value("Content-Length", len(res.body))
+        res.set_header_value("Method", "delete_password")
+        res.set_header_value("Content-Type", "ascii")

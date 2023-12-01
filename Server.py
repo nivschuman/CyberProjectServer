@@ -60,7 +60,7 @@ class Server:
 
 
 # Server with Storing Session capabilities
-# todo session cleanup, delete unused sessions
+# todo is session cleanup thread safe?!
 class SessionServer(Server):
     def __init__(self, host, port, session_token_length, session_ttl):
         super().__init__(host, port)
