@@ -7,7 +7,6 @@ from Crypto.PublicKey import RSA
 from random import randbytes
 
 
-# todo remove all sql injections
 class PasswordManagerServer:
     def __init__(self, host, port, db_connection_string):
         self.server = CommunicationProtocolServer(host, port, 10800)  # session ttl is 3 hours
@@ -17,6 +16,7 @@ class PasswordManagerServer:
         self.server.handle_method("create_user", self.create_user)
         self.server.handle_method("login_request", self.login_request)
         self.server.handle_method("login_test", self.login_test)
+        self.server.handle_method("get_sources", self.get_sources)
         self.server.handle_method("get_password", self.get_password)
         self.server.handle_method("set_password", self.set_password)
         self.server.handle_method("delete_password", self.delete_password)
@@ -130,6 +130,22 @@ class PasswordManagerServer:
             return
 
         user_id = session.data["loggedInUID"]
+
+        # get sources
+        self.db_cursor.execute(f"SELECT Source FROM Passwords WHERE UserID=?", user_id)
+        sources_db = self.db_cursor.fetchall()
+        sources = []
+
+        for source_item in sources_db:
+            sources.append(source_item[0])
+
+        sources_json = json.dumps(sources)
+        sources_json = sources_json.encode("ascii")
+
+        res.body = sources_json
+        res.set_header_value("Content-Length", len(res.body))
+        res.set_header_value("Method", "get_sources")
+        res.set_header_value("Content-Type", "ascii json")
 
     # gets ascii string of password source and returns encrypted password, no body if error
     def get_password(self, req, res, session):
