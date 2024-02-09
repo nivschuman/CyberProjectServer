@@ -35,9 +35,9 @@ class PasswordManagerServer:
 
         # check if there already exists a user with given username
         public_key_str = f"0x{public_key_bytes.hex()}"
-        self.db_cursor.execute(f"SELECT UserName, PublicKey FROM Users WHERE UserName=\'{user_name}\'")
+        self.db_cursor.execute(f"SELECT UserName, PublicKey FROM Users WHERE UserName=?", user_name)
         user_with_same_username = len(self.db_cursor.fetchall()) != 0
-        self.db_cursor.execute(f"SELECT UserName, PublicKey FROM Users WHERE PublicKey={public_key_str}")
+        self.db_cursor.execute(f"SELECT UserName, PublicKey FROM Users WHERE PublicKey=?", public_key_str)
         user_with_same_public_key = len(self.db_cursor.fetchall()) != 0
 
         if user_with_same_username:
@@ -45,7 +45,7 @@ class PasswordManagerServer:
         elif user_with_same_public_key:
             res.body = "User with this public key already exists, choose a different public key".encode("ascii")
         else:
-            self.db_cursor.execute(f"INSERT INTO Users (UserName, PublicKey) VALUES (\'{user_name}\', {public_key_str})")
+            self.db_cursor.execute(f"INSERT INTO Users (UserName, PublicKey) VALUES (?, ?)", user_name, public_key_str)
             self.db_cursor.commit()
             res.body = "Successfully created user".encode("ascii")
 
@@ -58,7 +58,7 @@ class PasswordManagerServer:
         user_name = req.body.decode("ascii")
 
         # get user's public key from database
-        self.db_cursor.execute(f"SELECT PublicKey FROM Users WHERE UserName=\'{user_name}\'")
+        self.db_cursor.execute(f"SELECT PublicKey FROM Users WHERE UserName=?", user_name)
         public_key_bytes = self.db_cursor.fetchall()
 
         # user does not exists or this was called without a session
@@ -101,7 +101,7 @@ class PasswordManagerServer:
         else:  # correct number and data is in session
             # get user id from database
             user_name = session.data["loginUserName"]
-            self.db_cursor.execute(f"SELECT ID FROM Users WHERE UserName=\'{user_name}\'")
+            self.db_cursor.execute(f"SELECT ID FROM Users WHERE UserName=?", user_name)
             user_id = self.db_cursor.fetchall()
 
             if len(user_id) == 0:
@@ -113,6 +113,23 @@ class PasswordManagerServer:
         res.set_header_value("Content-Length", len(res.body))
         res.set_header_value("Method", "login_test")
         res.set_header_value("Content-Type", "ascii")
+
+    # returns json array of all sources tied to user in session. Return no body if error
+    def get_sources(self, req, res, session):
+        # no session
+        if session is None:
+            res.body = None
+            res.set_header_value("Content-Length", 0)
+            res.set_header_value("Method", "get_sources")
+
+        # user is not logged in
+        if session.data.get("loggedInUID") is None:
+            res.body = None
+            res.set_header_value("Content-Length", 0)
+            res.set_header_value("Method", "get_sources")
+            return
+
+        user_id = session.data["loggedInUID"]
 
     # gets ascii string of password source and returns encrypted password, no body if error
     def get_password(self, req, res, session):
@@ -133,7 +150,7 @@ class PasswordManagerServer:
             return
 
         user_id = session.data["loggedInUID"]
-        self.db_cursor.execute(f"SELECT Password FROM Passwords WHERE UserID={user_id} AND Source=\'{source}\'")
+        self.db_cursor.execute(f"SELECT Password FROM Passwords WHERE UserID=? AND Source=?", user_id, source)
         password = self.db_cursor.fetchall()
 
         # no password found
@@ -178,7 +195,7 @@ class PasswordManagerServer:
         user_id = session.data["loggedInUID"]
 
         # password for source already exists
-        self.db_cursor.execute(f"SELECT Password FROM Passwords WHERE Source=\'{source}\' AND UserID={user_id}")
+        self.db_cursor.execute(f"SELECT Password FROM Passwords WHERE Source=? AND UserID=?", source, user_id)
         password = self.db_cursor.fetchall()
         if len(password) != 0:
             res.body = "Failed - password for source already exists".encode("ascii")
@@ -188,7 +205,7 @@ class PasswordManagerServer:
             return
 
         # enter into database
-        self.db_cursor.execute(f"INSERT INTO Passwords (Source, Password, UserID) VALUES (\'{source}\', {password_str}, {user_id})")
+        self.db_cursor.execute(f"INSERT INTO Passwords (Source, Password, UserID) VALUES (?, CONVERT(BINARY(256),?,1), ?)", source, password_str, user_id)
         self.db_cursor.commit()
 
         res.body = "Success".encode("ascii")
@@ -219,7 +236,7 @@ class PasswordManagerServer:
         user_id = session.data["loggedInUID"]
 
         # password for source doesn't exists
-        self.db_cursor.execute(f"SELECT Password FROM Passwords WHERE Source=\'{source}\' AND UserID={user_id}")
+        self.db_cursor.execute(f"SELECT Password FROM Passwords WHERE Source=? AND UserID=?", source, user_id)
         password = self.db_cursor.fetchall()
         if len(password) == 0:
             res.body = "Failed - password for source doesn't exist".encode("ascii")
@@ -229,7 +246,7 @@ class PasswordManagerServer:
             return
 
         # delete password record from database
-        self.db_cursor.execute(f"DELETE FROM Passwords WHERE Source=\'{source}\' AND UserID={user_id}")
+        self.db_cursor.execute(f"DELETE FROM Passwords WHERE Source=? AND UserID=?", source, user_id)
         self.db_cursor.commit()
 
         res.body = "Success".encode("ascii")
