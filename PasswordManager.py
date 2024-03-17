@@ -20,6 +20,7 @@ class PasswordManagerServer:
         self.server.handle_method("get_password", self.get_password)
         self.server.handle_method("set_password", self.set_password)
         self.server.handle_method("delete_password", self.delete_password)
+        self.server.handle_method("delete_user", self.delete_user)
 
     def start_server(self):
         self.server.serve_forever()
@@ -45,7 +46,7 @@ class PasswordManagerServer:
         elif user_with_same_public_key:
             res.body = "User with this public key already exists, choose a different public key".encode("ascii")
         else:
-            self.db_cursor.execute(f"INSERT INTO Users (UserName, PublicKey) VALUES (?, ?)", user_name, public_key_str)
+            self.db_cursor.execute(f"INSERT INTO Users (UserName, PublicKey) VALUES (?, CONVERT(VARBINARY(300),?,1))", user_name, public_key_str)
             self.db_cursor.commit()
             res.body = "Successfully created user".encode("ascii")
 
@@ -268,4 +269,37 @@ class PasswordManagerServer:
         res.body = "Success".encode("ascii")
         res.set_header_value("Content-Length", len(res.body))
         res.set_header_value("Method", "delete_password")
+        res.set_header_value("Content-Type", "ascii")
+
+    # receives nothing, deletes all user records of logged in user. Returns ascii on success or failure
+    def delete_user(self, req, res, session):
+        # no session
+        if session is None:
+            res.body = "Failed - no session".encode("ascii")
+            res.set_header_value("Content-Length", len(res.body))
+            res.set_header_value("Method", "delete_user")
+            res.set_header_value("Content-Type", "ascii")
+            return
+
+        # user is not logged in
+        if session.data.get("loggedInUID") is None:
+            res.body = "Failed - not logged in".encode("ascii")
+            res.set_header_value("Content-Length", len(res.body))
+            res.set_header_value("Method", "delete_user")
+            res.set_header_value("Content-Type", "ascii")
+            return
+
+        user_id = session.data["loggedInUID"]
+
+        # delete all password records tied to user id
+        self.db_cursor.execute(f"DELETE FROM Passwords WHERE UserID=?", user_id)
+        self.db_cursor.commit()
+
+        # delete user record tied to user id
+        self.db_cursor.execute(f"DELETE FROM Users WHERE ID=?", user_id)
+        self.db_cursor.commit()
+
+        res.body = "Success".encode("ascii")
+        res.set_header_value("Content-Length", len(res.body))
+        res.set_header_value("Method", "delete_user")
         res.set_header_value("Content-Type", "ascii")
