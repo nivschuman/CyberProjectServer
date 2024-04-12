@@ -35,26 +35,34 @@ class PasswordManagerServer:
         public_key_bytes = base64.b64decode(body_json["publicKey"])
         user_name = body_json["userName"]
 
-        # check if there already exists a user with given username
+        try:
+            # check if there already exists a user with given username
+            public_key_str = f"0x{public_key_bytes.hex()}"
+            db_cursor.execute(f"SELECT UserName, PublicKey FROM Users WHERE UserName=?", user_name)
+            user_with_same_username = len(db_cursor.fetchall()) != 0
+            db_cursor.execute(f"SELECT UserName, PublicKey FROM Users WHERE PublicKey=?", public_key_str)
+            user_with_same_public_key = len(db_cursor.fetchall()) != 0
 
-        public_key_str = f"0x{public_key_bytes.hex()}"
-        db_cursor.execute(f"SELECT UserName, PublicKey FROM Users WHERE UserName=?", user_name)
-        user_with_same_username = len(db_cursor.fetchall()) != 0
-        db_cursor.execute(f"SELECT UserName, PublicKey FROM Users WHERE PublicKey=?", public_key_str)
-        user_with_same_public_key = len(db_cursor.fetchall()) != 0
+            if user_with_same_username:
+                res.body = "User with this username already exists, choose a different username".encode("ascii")
+            elif user_with_same_public_key:
+                res.body = "User with this public key already exists, choose a different public key".encode("ascii")
+            else:
+                db_cursor.execute(f"INSERT INTO Users (UserName, PublicKey) VALUES (?, CONVERT(VARBINARY(300),?,1))", user_name, public_key_str)
+                db_cursor.commit()
+                res.body = "Successfully created user".encode("ascii")
 
-        if user_with_same_username:
-            res.body = "User with this username already exists, choose a different username".encode("ascii")
-        elif user_with_same_public_key:
-            res.body = "User with this public key already exists, choose a different public key".encode("ascii")
-        else:
-            db_cursor.execute(f"INSERT INTO Users (UserName, PublicKey) VALUES (?, CONVERT(VARBINARY(300),?,1))", user_name, public_key_str)
-            db_cursor.commit()
-            res.body = "Successfully created user".encode("ascii")
-
-        res.set_header_value("Content-Length", len(res.body))
-        res.set_header_value("Method", "create_user")
-        res.set_header_value("Content-Type", "ascii")
+            res.set_header_value("Content-Length", len(res.body))
+            res.set_header_value("Method", "create_user")
+            res.set_header_value("Content-Type", "ascii")
+        except pyodbc.Error as db_error:
+            print(db_error)
+            sql_state = db_error.args[0]
+            sql_error_message = db_error.args[1]
+            res.body = f"Failed - server database error\nSQL STATE: {sql_state}\nError message: {sql_error_message}"
+            res.set_header_value("Content-Length", len(res.body))
+            res.set_header_value("Method", "create_user")
+            res.set_header_value("Content-Type", "ascii")
 
     # receive username in ascii and return encrypted random 64 bits, no body is returned on error
     def login_request(self, req, res, session):
@@ -63,8 +71,17 @@ class PasswordManagerServer:
         user_name = req.body.decode("ascii")
 
         # get user's public key from database
-        db_cursor.execute(f"SELECT PublicKey FROM Users WHERE UserName=?", user_name)
-        public_key_bytes = db_cursor.fetchall()
+        public_key_bytes = None
+        try:
+            db_cursor.execute(f"SELECT PublicKey FROM Users WHERE UserName=?", user_name)
+            public_key_bytes = db_cursor.fetchall()
+        except pyodbc.Error as db_error:
+            print(db_error)
+            res.body = None
+            res.set_header_value("Content-Length", 0)
+            res.set_header_value("Method", "login_request")
+            res.set_header_value("Content-Type", "bytes")
+            return
 
         # user does not exists or this was called without a session
         if len(public_key_bytes) == 0 or session is None:
@@ -106,16 +123,22 @@ class PasswordManagerServer:
         elif decrypted_number_bytes != session.data["loginNumber"]:
             res.body = "Failed - incorrect number".encode("ascii")
         else:  # correct number and data is in session
-            # get user id from database
-            user_name = session.data["loginUserName"]
-            db_cursor.execute(f"SELECT ID FROM Users WHERE UserName=?", user_name)
-            user_id = db_cursor.fetchall()
+            try:
+                # get user id from database
+                user_name = session.data["loginUserName"]
+                db_cursor.execute(f"SELECT ID FROM Users WHERE UserName=?", user_name)
+                user_id = db_cursor.fetchall()
 
-            if len(user_id) == 0:
-                res.body = f"Failed - user {user_name} doesn't exist".encode("ascii")
-            else:
-                session.data["loggedInUID"] = user_id[0][0]
-                res.body = "Succeeded".encode("ascii")
+                if len(user_id) == 0:
+                    res.body = f"Failed - user {user_name} doesn't exist".encode("ascii")
+                else:
+                    session.data["loggedInUID"] = user_id[0][0]
+                    res.body = "Succeeded".encode("ascii")
+            except pyodbc.Error as db_error:
+                print(db_error)
+                sql_state = db_error.args[0]
+                sql_error_message = db_error.args[1]
+                res.body = f"Failed - server database error\nSQL STATE: {sql_state}\nError message: {sql_error_message}"
 
         res.set_header_value("Content-Length", len(res.body))
         res.set_header_value("Method", "login_test")
@@ -141,9 +164,17 @@ class PasswordManagerServer:
         user_id = session.data["loggedInUID"]
 
         # get sources
-        db_cursor.execute(f"SELECT Source FROM Passwords WHERE UserID=?", user_id)
-        sources_db = db_cursor.fetchall()
+        sources_db = None
         sources = []
+        try:
+            db_cursor.execute(f"SELECT Source FROM Passwords WHERE UserID=?", user_id)
+            sources_db = db_cursor.fetchall()
+        except pyodbc.Error as db_error:
+            print(db_error)
+            res.body = None
+            res.set_header_value("Content-Length", 0)
+            res.set_header_value("Method", "get_sources")
+            return
 
         for source_item in sources_db:
             sources.append(source_item[0])
@@ -177,8 +208,17 @@ class PasswordManagerServer:
             return
 
         user_id = session.data["loggedInUID"]
-        db_cursor.execute(f"SELECT Password FROM Passwords WHERE UserID=? AND Source=?", user_id, source)
-        password = db_cursor.fetchall()
+
+        password = None
+        try:
+            db_cursor.execute(f"SELECT Password FROM Passwords WHERE UserID=? AND Source=?", user_id, source)
+            password = db_cursor.fetchall()
+        except pyodbc.Error as db_error:
+            print(db_error)
+            res.body = None
+            res.set_header_value("Content-Length", 0)
+            res.set_header_value("Method", "get_password")
+            return
 
         # no password found
         if len(password) == 0:
@@ -224,8 +264,20 @@ class PasswordManagerServer:
         user_id = session.data["loggedInUID"]
 
         # password for source already exists
-        db_cursor.execute(f"SELECT Password FROM Passwords WHERE Source=? AND UserID=?", source, user_id)
-        password = db_cursor.fetchall()
+        password = None
+        try:
+            db_cursor.execute(f"SELECT Password FROM Passwords WHERE Source=? AND UserID=?", source, user_id)
+            password = db_cursor.fetchall()
+        except pyodbc.Error as db_error:
+            print(db_error)
+            sql_state = db_error.args[0]
+            sql_error_message = db_error.args[1]
+            res.body = f"Failed - server database error\nSQL STATE: {sql_state}\nError message: {sql_error_message}"
+            res.set_header_value("Content-Length", len(res.body))
+            res.set_header_value("Method", "set_password")
+            res.set_header_value("Content-Type", "ascii")
+            return
+
         if len(password) != 0:
             res.body = "Failed - password for source already exists".encode("ascii")
             res.set_header_value("Content-Length", len(res.body))
@@ -234,10 +286,16 @@ class PasswordManagerServer:
             return
 
         # enter into database
-        db_cursor.execute(f"INSERT INTO Passwords (Source, Password, UserID) VALUES (?, CONVERT(BINARY(256),?,1), ?)", source, password_str, user_id)
-        db_cursor.commit()
+        try:
+            db_cursor.execute(f"INSERT INTO Passwords (Source, Password, UserID) VALUES (?, CONVERT(BINARY(256),?,1), ?)", source, password_str, user_id)
+            db_cursor.commit()
+            res.body = "Success".encode("ascii")
+        except pyodbc.Error as db_error:
+            print(db_error)
+            sql_state = db_error.args[0]
+            sql_error_message = db_error.args[1]
+            res.body = f"Failed - server database error\nSQL STATE: {sql_state}\nError message: {sql_error_message}"
 
-        res.body = "Success".encode("ascii")
         res.set_header_value("Content-Length", len(res.body))
         res.set_header_value("Method", "set_password")
         res.set_header_value("Content-Type", "ascii")
@@ -267,8 +325,20 @@ class PasswordManagerServer:
         user_id = session.data["loggedInUID"]
 
         # password for source doesn't exists
-        db_cursor.execute(f"SELECT Password FROM Passwords WHERE Source=? AND UserID=?", source, user_id)
-        password = db_cursor.fetchall()
+        password = None
+        try:
+            db_cursor.execute(f"SELECT Password FROM Passwords WHERE Source=? AND UserID=?", source, user_id)
+            password = db_cursor.fetchall()
+        except pyodbc.Error as db_error:
+            print(db_error)
+            sql_state = db_error.args[0]
+            sql_error_message = db_error.args[1]
+            res.body = f"Failed - server database error\nSQL STATE: {sql_state}\nError message: {sql_error_message}"
+            res.set_header_value("Content-Length", len(res.body))
+            res.set_header_value("Method", "delete_password")
+            res.set_header_value("Content-Type", "ascii")
+            return
+
         if len(password) == 0:
             res.body = "Failed - password for source doesn't exist".encode("ascii")
             res.set_header_value("Content-Length", len(res.body))
@@ -277,10 +347,16 @@ class PasswordManagerServer:
             return
 
         # delete password record from database
-        db_cursor.execute(f"DELETE FROM Passwords WHERE Source=? AND UserID=?", source, user_id)
-        db_cursor.commit()
+        try:
+            db_cursor.execute(f"DELETE FROM Passwords WHERE Source=? AND UserID=?", source, user_id)
+            db_cursor.commit()
+            res.body = "Success".encode("ascii")
+        except pyodbc.Error as db_error:
+            print(db_error)
+            sql_state = db_error.args[0]
+            sql_error_message = db_error.args[1]
+            res.body = f"Failed - server database error\nSQL STATE: {sql_state}\nError message: {sql_error_message}"
 
-        res.body = "Success".encode("ascii")
         res.set_header_value("Content-Length", len(res.body))
         res.set_header_value("Method", "delete_password")
         res.set_header_value("Content-Type", "ascii")
@@ -307,16 +383,25 @@ class PasswordManagerServer:
 
         user_id = session.data["loggedInUID"]
 
-        # delete all password records tied to user id
-        db_cursor.execute(f"DELETE FROM Passwords WHERE UserID=?", user_id)
+        try:
+            # delete all password records tied to user id
+            db_cursor.execute(f"DELETE FROM Passwords WHERE UserID=?", user_id)
 
-        # delete user record tied to user id
-        db_cursor.execute(f"DELETE FROM Users WHERE ID=?", user_id)
+            # delete user record tied to user id
+            db_cursor.execute(f"DELETE FROM Users WHERE ID=?", user_id)
 
-        # commit execution
-        db_cursor.commit()
+            # commit execution
+            db_cursor.commit()
 
-        res.body = "Success".encode("ascii")
+            res.body = "Success".encode("ascii")
+        except pyodbc.Error as db_error:
+            db_cursor.rollback()
+
+            print(db_error)
+            sql_state = db_error.args[0]
+            sql_error_message = db_error.args[1]
+            res.body = f"Failed - server database error\nSQL STATE: {sql_state}\nError message: {sql_error_message}"
+
         res.set_header_value("Content-Length", len(res.body))
         res.set_header_value("Method", "delete_user")
         res.set_header_value("Content-Type", "ascii")
