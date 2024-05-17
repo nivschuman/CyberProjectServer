@@ -104,16 +104,18 @@ class SessionServer(Server):
 
     # removal for sessions that have expired
     def remove_sessions(self):
-        remove_tokens = []
+        while True:
+            remove_tokens = []
 
-        # find sessions that have expired
-        for token, session in self.sessions.items():
-            if session.seconds_alive() > self.session_ttl:
-                remove_tokens.append(token)
+            # find sessions that have expired
+            for token, session in self.sessions.items():
+                if session.seconds_alive() > self.session_ttl:
+                    remove_tokens.append(token)
 
-        # remove expired sessions from dictionary
-        for token in remove_tokens:
-            self.sessions.pop(token)
+            # remove expired sessions from dictionary
+            for token in remove_tokens:
+                print(f"Deleted session with token={token}")
+                self.sessions.pop(token)
 
 
 # Server which works with the Communication Protocol
