@@ -1,6 +1,7 @@
 import socket
 import re
 import string
+import time
 from random import randint
 from threading import Thread
 from threading import Lock
@@ -107,15 +108,20 @@ class SessionServer(Server):
         while True:
             remove_tokens = []
 
-            # find sessions that have expired
-            for token, session in self.sessions.items():
-                if session.seconds_alive() > self.session_ttl:
-                    remove_tokens.append(token)
+            try:
+                # find sessions that have expired
+                for token, session in self.sessions.items():
+                    if session.seconds_alive() > self.session_ttl:
+                        remove_tokens.append(token)
+            except RuntimeError as e:  # dictionary changed size during iteration
+                return
 
             # remove expired sessions from dictionary
             for token in remove_tokens:
                 print(f"Deleted session with token={token}")
                 self.sessions.pop(token)
+
+            time.sleep(5)
 
 
 # Server which works with the Communication Protocol
