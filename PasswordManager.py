@@ -50,7 +50,7 @@ class PasswordManagerServer:
             else:
                 db_cursor.execute(f"INSERT INTO Users (UserName, PublicKey) VALUES (?, CONVERT(VARBINARY(300),?,1))", user_name, public_key_str)
                 db_cursor.commit()
-                res.body = "Successfully created user".encode("ascii")
+                res.body = "Success".encode("ascii")
 
             res.set_header_value("Content-Length", len(res.body))
             res.set_header_value("Method", "create_user")
@@ -133,7 +133,7 @@ class PasswordManagerServer:
                     res.body = f"Failed - user {user_name} doesn't exist".encode("ascii")
                 else:
                     session.data["loggedInUID"] = user_id[0][0]
-                    res.body = "Succeeded".encode("ascii")
+                    res.body = "Success".encode("ascii")
             except pyodbc.Error as db_error:
                 print(db_error)
                 sql_state = db_error.args[0]
