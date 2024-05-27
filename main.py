@@ -26,7 +26,7 @@ def main():
                                                      "PasswordManagerDB",
                                                      "yes")
 
-    password_manager_server = PasswordManagerServer("0.0.0.0", 8080, db_connection_string)
+    password_manager_server = PasswordManagerServer("0.0.0.0", 8080, db_connection_string, True)
     password_manager_server.start_server()
 
 

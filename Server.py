@@ -1,4 +1,5 @@
 import socket
+import ssl
 import re
 import string
 import time
@@ -14,9 +15,14 @@ from Session import Session
 # Client connections go through different handler functions
 # handler functions are called in added order. Result of one handler goes to the next.
 class Server:
-    def __init__(self, host, port):
+    def __init__(self, host, port, with_ssl):
         self.port = port
         self.host = host
+
+        self.ssl_context = None
+        if with_ssl:
+            self.ssl_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+            self.ssl_context.load_cert_chain(certfile=r"SSL/cert.pem", keyfile=r"SSL/key.pem")
 
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
@@ -52,9 +58,14 @@ class Server:
     def serve_forever(self):
         print(f"Starting Server on host={self.host}, port={self.port}")
         self.server_socket.bind((self.host, self.port))
+
+        server_socket = self.server_socket
+        if self.ssl_context is not None:
+            server_socket = self.ssl_context.wrap_socket(server_socket, server_side=True)
+
         while True:
-            self.server_socket.listen()
-            client_socket, client_address = self.server_socket.accept()
+            server_socket.listen()
+            client_socket, client_address = server_socket.accept()
             print(f"Received Connection from {client_address}")
             client_thread = Thread(target=self.handle_client, args=(client_socket, client_address))
             client_thread.start()
@@ -63,8 +74,8 @@ class Server:
 # Server with Storing Session capabilities
 # todo is session cleanup thread safe?!
 class SessionServer(Server):
-    def __init__(self, host, port, session_token_length, session_ttl):
-        super().__init__(host, port)
+    def __init__(self, host, port, session_token_length, session_ttl, with_ssl):
+        super().__init__(host, port, with_ssl)
 
         self.sessions = dict()  # key is session token, value is session object
         self.session_token_length = session_token_length
@@ -126,8 +137,8 @@ class SessionServer(Server):
 
 # Server which works with the Communication Protocol
 class CommunicationProtocolServer(SessionServer):
-    def __init__(self, host, port, session_ttl):
-        super().__init__(host, port, 8, session_ttl)
+    def __init__(self, host, port, session_ttl, with_ssl):
+        super().__init__(host, port, 8, session_ttl, with_ssl)
 
         self.handlers.append(self.parse_message)
         self.handlers.append(self.session_generator)
