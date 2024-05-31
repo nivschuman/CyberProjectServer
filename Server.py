@@ -15,7 +15,31 @@ from Session import Session
 # Client connections go through different handler functions
 # handler functions are called in added order. Result of one handler goes to the next.
 class Server:
+    """
+    TCP Socket Server which binds to a given host and port.
+    Each client connection is handled in a different thread.
+    Client connections go through different handler functions.
+    Handler functions are called in added order. The result of one handler goes to the next.
+
+    Attributes:
+        host (str): The host to bind the server to.
+        port (int): The port to bind the server to.
+        ssl_context (ssl.SSLContext): The SSL context for secure connections.
+        server_socket (socket.socket): The server socket.
+        handlers (list): List of handler functions to process client connections.
+    """
+
     def __init__(self, host, port, with_ssl):
+        """
+        Constructor:
+            Initializes the Server instance.
+
+            Args:
+                host (str): The host to bind the server to.
+                port (int): The port to bind the server to.
+                with_ssl (bool): Whether to use SSL for secure connections.
+        """
+
         self.port = port
         self.host = host
 
@@ -30,22 +54,66 @@ class Server:
 
     # add handler function to deal with client connection
     def add_handler(self, handler):
+        """
+        Adds a handler function to process client connections.
+
+        Args:
+            handler (function): The handler function to add.
+        """
+
         self.handlers.append(handler)
 
     # remove handler function
     def remove_handler(self, handler):
+        """
+        Removes a handler function.
+
+        Args:
+            handler (function): The handler function to remove.
+        """
+
         self.handlers.remove(handler)
 
     # receive message from client. Default receives 1024 bytes from client socket.
     def receive_message(self, client_socket, client_address):
+        """
+        Receives a message from the client. Default receives 1024 bytes from client socket.
+
+        Args:
+            client_socket (socket.socket): The client socket.
+            client_address (tuple): The client address.
+
+        Returns:
+            bytes: The received message.
+        """
+
         return client_socket.recv(1024)
 
     # what to do on client closing. Default just closes socket.
     def close_client(self, client_socket, client_address):
+        """
+        Handles client closing. Default just closes the socket.
+
+        Args:
+            client_socket (socket.socket): The client socket.
+            client_address (tuple): The client address.
+        """
+
         client_socket.close()
 
     # handle connection from client. message goes through all handler functions
     def handle_client(self, client_socket, client_address):
+        """
+        Handles connection from the client.
+        The message is received using receive_message function.
+        The message then goes through all handler functions.
+        At the end close_client function is called.
+
+        Args:
+            client_socket (socket.socket): The client socket.
+            client_address (tuple): The client address.
+        """
+
         message = self.receive_message(client_socket, client_address)
 
         prev_result = message
@@ -56,6 +124,10 @@ class Server:
 
     # turn server on to forever serve
     def serve_forever(self):
+        """
+        Turns the server on to serve forever.
+        """
+
         print(f"Starting Server on host={self.host}, port={self.port}")
         self.server_socket.bind((self.host, self.port))
 
@@ -74,7 +146,29 @@ class Server:
 # Server with Storing Session capabilities
 # todo is session cleanup thread safe?!
 class SessionServer(Server):
+    """
+    Server with storing session capabilities.
+
+    Attributes:
+        sessions (dict): Dictionary storing sessions with session tokens as keys and session objects as values.
+        session_token_length (int): Length of the session token.
+        session_ttl (int): Time-to-live for a session in seconds.
+        session_cleanup_thread (threading.Thread): Thread to remove expired sessions.
+    """
+
     def __init__(self, host, port, session_token_length, session_ttl, with_ssl):
+        """
+        Constructor:
+             Initializes the SessionServer instance.
+
+             Args:
+                 host (str): The host to bind the server to.
+                 port (int): The port to bind the server to.
+                 session_token_length (int): Length of the session token.
+                 session_ttl (int): Time-to-live for a session in seconds.
+                 with_ssl (bool): Whether to use SSL for secure connections.
+        """
+
         super().__init__(host, port, with_ssl)
 
         self.sessions = dict()  # key is session token, value is session object
@@ -84,11 +178,25 @@ class SessionServer(Server):
         self.session_cleanup_thread = Thread(target=self.remove_sessions)
 
     def serve_forever(self):
+        """
+        Turns the server on to serve forever and starts the session cleanup thread.
+        """
+
         self.session_cleanup_thread.start()
         super().serve_forever()
 
     # generate unique token for new session
     def generate_session_token(self, length):
+        """
+        Generates a unique token for a new session.
+
+        Args:
+            length (int): Length of the session token.
+
+        Returns:
+            str: The generated session token.
+        """
+
         characters = string.ascii_lowercase + string.ascii_uppercase + string.digits
         token = ""
 
@@ -101,6 +209,13 @@ class SessionServer(Server):
 
     # create a session and return its token
     def create_session(self):
+        """
+         Creates a session and returns its token.
+
+         Returns:
+             str: The session token.
+         """
+
         token = self.generate_session_token(self.session_token_length)
         self.sessions[token] = Session()
 
@@ -108,14 +223,36 @@ class SessionServer(Server):
 
     # get session associated with token
     def get_session(self, token):
+        """
+        Gets the session associated with the token.
+
+        Args:
+            token (str): The session token.
+
+        Returns:
+            Session: The session object.
+        """
+
         return self.sessions.get(token)
 
     # close session with token
     def close_session(self, token):
+        """
+        Closes the session with the specified token.
+
+        Args:
+            token (str): The session token.
+        """
+
         self.sessions.pop(token)
 
     # removal for sessions that have expired
     def remove_sessions(self):
+        """
+        Removes sessions that have expired.
+        Runs on the session cleanup thread.
+        """
+
         while True:
             remove_tokens = []
 
@@ -137,7 +274,25 @@ class SessionServer(Server):
 
 # Server which works with the Communication Protocol
 class CommunicationProtocolServer(SessionServer):
+    """
+    Server which works with the Communication Protocol.
+
+    Attributes:
+        method_handlers (dict): Dictionary with method names as keys and functions to handle methods as values.
+    """
+
     def __init__(self, host, port, session_ttl, with_ssl):
+        """
+        Constructor:
+             Initializes the CommunicationProtocolServer instance.
+
+             Args:
+                 host (str): The host to bind the server to.
+                 port (int): The port to bind the server to.
+                 session_ttl (int): Time-to-live for a session in seconds.
+                 with_ssl (bool): Whether to use SSL for secure connections.
+         """
+
         super().__init__(host, port, 8, session_ttl, with_ssl)
 
         self.handlers.append(self.parse_message)
@@ -150,9 +305,34 @@ class CommunicationProtocolServer(SessionServer):
     # method_function gets req, res and session object relevant to req session token
     # res is changed in method_function
     def handle_method(self, method, method_function):
+        """
+        Adds the method_function to the method_handlers dictionary, with method as the key.
+        If a request with Method=method is received, method_function will be called.
+
+         Args:
+             method (str): The method name.
+             method_function (function): The function to handle the method.
+         """
+
         self.method_handlers[method] = method_function
 
     def receive_message(self, client_socket, client_address):
+        """
+         Receives a full communication protocol byte message from the client.
+         The receiving is done using the header_length and the content length.
+         Returns the fully received communication protocol byte message for the parse message handler.
+
+         Args:
+             client_socket (socket.socket): The client socket.
+             client_address (tuple): The client address.
+
+         Returns:
+             bytes: The complete communication protocol byte message.
+
+         Raises:
+             CommunicationProtocolException: If the message does not start with 'req' or 'res'.
+         """
+
         req_res = client_socket.recv(3)
 
         if req_res != "req".encode() and req_res != "res".encode():
@@ -184,6 +364,18 @@ class CommunicationProtocolServer(SessionServer):
 
     # turn byte message into CommunicationProtocol object for next handler
     def parse_message(self, client_socket, client_address, message):
+        """
+        Turns full communication protocol byte message into CommunicationProtocol object for the next handler.
+
+        Args:
+            client_socket (socket.socket): The client socket.
+            client_address (tuple): The client address.
+            message (bytes): The byte message.
+
+        Returns:
+            CommunicationProtocol: The parsed communication protocol message.
+        """
+
         return CommunicationProtocol.from_bytes(message)
 
     def session_generator(self, client_socket, client_address, req):
@@ -198,6 +390,20 @@ class CommunicationProtocolServer(SessionServer):
 
     # creates response to specific method and sends it to client
     def method_handler(self, client_socket, client_address, req):
+        """
+        Calls specific method handler function based on client requested method.
+        Method is called with req object, new res object and session object.
+        Res object is filled up by method handler function and is then sent to client.
+
+        Args:
+            client_socket (socket.socket): The client socket.
+            client_address (tuple): The client address.
+            req (CommunicationProtocol): The request message.
+
+        Returns:
+            tuple: The request and response messages for possible extra handling.
+        """
+
         # response object. Changed in method handler.
         res = CommunicationProtocol("res", dict(), None)
 

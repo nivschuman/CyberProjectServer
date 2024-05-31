@@ -8,7 +8,27 @@ from random import randbytes
 
 
 class PasswordManagerServer:
+    """
+    A server for managing user passwords with various functionalities such as user creation, login,
+    retrieving and setting passwords, and deleting users.
+
+    Attributes:
+        server (CommunicationProtocolServer): The communication protocol server instance.
+        db_connection (pyodbc.Connection): The database connection.
+    """
+
     def __init__(self, host, port, db_connection_string, with_ssl):
+        """
+        Constructor:
+            Initializes the PasswordManagerServer with the specified parameters.
+
+            Args:
+                host (str): The host address.
+                port (int): The port number.
+                db_connection_string (str): The database connection string.
+                with_ssl (bool): Whether to use SSL.
+        """
+
         self.server = CommunicationProtocolServer(host, port, 10800, with_ssl)  # session ttl is 3 hours
         self.db_connection = pyodbc.connect(db_connection_string)
 
@@ -22,11 +42,30 @@ class PasswordManagerServer:
         self.server.handle_method("delete_user", self.delete_user)
 
     def start_server(self):
+        """
+        Starts the server to listen for incoming requests.
+        """
+
         self.server.serve_forever()
 
     # receive json with publicKey, userName and create such user
     # returns ascii with info on success or error
     def create_user(self, req, res, session):
+        """
+        Creates a new user with the provided public key and username.
+
+        Args:
+            req (CommunicationProtocol): The request message.
+            res (CommunicationProtocol): The response message.
+            session (Session): The current session.
+
+        The request body should contain a JSON object with the following keys:
+            - publicKey (str): The user's public key, encoded in base64.
+            - userName (str): The username.
+
+        The response body will contain an ASCII string indicating success or error.
+        """
+
         db_cursor = self.db_connection.cursor()
 
         body_str = req.body.decode("ascii")
@@ -66,6 +105,19 @@ class PasswordManagerServer:
 
     # receive username in ascii and return encrypted random 64 bits, no body is returned on error
     def login_request(self, req, res, session):
+        """
+        Handles a login request by returning an encrypted random 64-bit number.
+
+        Args:
+            req (CommunicationProtocol): The request message.
+            res (CommunicationProtocol): The response message.
+            session (Session): The current session.
+
+        The request body should contain the username as an ASCII string.
+
+        The response body will contain the encrypted random 64-bit number, or no body if there is an error.
+        """
+
         db_cursor = self.db_connection.cursor()
 
         user_name = req.body.decode("ascii")
@@ -110,6 +162,19 @@ class PasswordManagerServer:
     # receive decrypted 64 bits and if they match bits in session store logged in uid
     # returns ascii with info for success or failure
     def login_test(self, req, res, session):
+        """
+        Tests the login by verifying the decrypted 64-bit number.
+
+        Args:
+            req (CommunicationProtocol): The request message.
+            res (CommunicationProtocol): The response message.
+            session (Session): The current session.
+
+        The request body should contain the decrypted 64-bit number as bytes.
+
+        The response body will contain an ASCII string indicating success or failure.
+        """
+
         db_cursor = self.db_connection.cursor()
 
         decrypted_number_bytes = req.body
@@ -146,6 +211,17 @@ class PasswordManagerServer:
 
     # returns json array of all sources tied to user in session. Return no body if error
     def get_sources(self, req, res, session):
+        """
+        Retrieves the sources tied to the logged-in user.
+
+        Args:
+            req (CommunicationProtocol): The request message.
+            res (CommunicationProtocol): The response message.
+            session (Session): The current session.
+
+        The response body will contain a JSON array of sources, or no body if there is an error.
+        """
+
         db_cursor = self.db_connection.cursor()
 
         # no session
@@ -189,6 +265,19 @@ class PasswordManagerServer:
 
     # gets ascii string of password source and returns encrypted password, no body if error
     def get_password(self, req, res, session):
+        """
+         Retrieves the password for the specified source for the logged in user.
+
+         Args:
+             req (CommunicationProtocol): The request message.
+             res (CommunicationProtocol): The response message.
+             session (Session): The current session.
+
+         The request body should contain the source as an ASCII string.
+
+         The response body will contain the encrypted password, or no body if there is an error.
+         """
+
         db_cursor = self.db_connection.cursor()
 
         source = req.body.decode("ascii")
@@ -236,6 +325,21 @@ class PasswordManagerServer:
 
     # gets json of source and password encoded in base64, returns ascii if success or failure
     def set_password(self, req, res, session):
+        """
+        Sets the password for a specific source for the logged in user.
+
+        Args:
+            req (CommunicationProtocol): The request message.
+            res (CommunicationProtocol): The response message.
+            session (Session): The current session.
+
+        The request body should contain a JSON object with the following keys:
+            - source (str): The source.
+            - password (str): The password.
+
+        The response body will contain an ASCII string indicating success or failure.
+        """
+
         db_cursor = self.db_connection.cursor()
 
         body_str = req.body.decode("ascii")
@@ -302,6 +406,19 @@ class PasswordManagerServer:
 
     # gets source and deletes password record with given source. Returns ascii for success or failure
     def delete_password(self, req, res, session):
+        """
+        Deletes the password for a specific source for the logged in user.
+
+        Args:
+            req (CommunicationProtocol): The request message.
+            res (CommunicationProtocol): The response message.
+            session (Session): The current session.
+
+        The request body should contain the source as an ASCII string.
+
+        The response body will contain an ASCII string indicating success or failure.
+        """
+
         db_cursor = self.db_connection.cursor()
 
         source = req.body.decode("ascii")
@@ -363,6 +480,17 @@ class PasswordManagerServer:
 
     # receives nothing, deletes all user records of logged in user. Returns ascii on success or failure
     def delete_user(self, req, res, session):
+        """
+        Deletes the currently logged-in user.
+
+        Args:
+            req (CommunicationProtocol): The request message.
+            res (CommunicationProtocol): The response message.
+            session (Session): The current session.
+
+        The response body will contain an ASCII string indicating success or failure.
+        """
+
         db_cursor = self.db_connection.cursor()
 
         # no session

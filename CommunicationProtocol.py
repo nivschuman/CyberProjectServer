@@ -1,16 +1,60 @@
 class CommunicationProtocol:
+    """
+    A class to represent a communication protocol for request and response messages.
+
+    Attributes:
+        req_res (str): A string indicating whether the message is a request ('req') or a response ('res').
+        headers (dict): A dictionary containing header names and values as strings.
+        body (bytes): The body of the message in bytes.
+    """
+
     def __init__(self, req_res, headers: dict, body):
+        """
+        Constructor:
+            Initializes the CommunicationProtocol instance.
+
+            Args:
+                req_res (str): A string indicating whether the message is a request ('req') or a response ('res').
+                headers (dict): A dictionary containing header names and values as strings.
+                body (bytes): The body of the message in bytes.
+        """
+
         self.req_res = req_res
         self.headers = headers  # dictionary in which key is header_name, value is header_value as strings
         self.body = body  # should be in bytes
 
     def get_header_value(self, header_name):
+        """
+        Returns the value of the specified header.
+
+        Args:
+            header_name (str): The name of the header.
+
+        Returns:
+            str: The value of the specified header.
+        """
+
         return self.headers.get(header_name)
 
     def set_header_value(self, header_name, header_value):
+        """
+        Sets the value of the specified header.
+
+        Args:
+            header_name (str): The name of the header.
+            header_value (str): The value of the header.
+        """
+
         self.headers[header_name] = header_value
 
     def to_bytes(self):
+        """
+        Converts the communication protocol instance to bytes.
+
+        Returns:
+            bytes: The byte representation of the communication protocol instance.
+        """
+
         params_list = self.get_params_list()
 
         params_length = 0
@@ -40,6 +84,19 @@ class CommunicationProtocol:
 
     @staticmethod
     def from_bytes(byte_arr):
+        """
+        Converts bytes to a CommunicationProtocol instance.
+
+        Args:
+            byte_arr (bytes): The byte representation of a communication protocol instance.
+
+        Returns:
+            CommunicationProtocol: The communication protocol instance.
+
+        Raises:
+            CommunicationProtocolException: If the message does not start with 'req' or 'res'.
+        """
+
         req_res = byte_arr[0:3].decode()
 
         if req_res != "req" and req_res != "res":
@@ -62,6 +119,16 @@ class CommunicationProtocol:
 
     @staticmethod
     def params_list_to_dict(params_list):
+        """
+         Converts a list of parameters to a dictionary.
+
+         Args:
+             params_list (list): A list of parameters in the format 'header_name=header_value'.
+
+         Returns:
+             dict: A dictionary with header names as keys and header values as values.
+         """
+
         param_dict = dict()
         for param in params_list:
             split_param = param.split("=")
@@ -73,6 +140,13 @@ class CommunicationProtocol:
         return param_dict
 
     def get_params_list(self):
+        """
+        Returns the headers as a list of strings in the format 'header_name=header_value'.
+
+        Returns:
+            list: A list of strings representing the headers.
+        """
+
         params_list = []
 
         for header_name in self.headers.keys():
@@ -84,7 +158,24 @@ class CommunicationProtocol:
 
 
 class CommunicationProtocolException(Exception):
+    """
+    Exception raised for errors in the CommunicationProtocol class.
+
+    Attributes:
+        byte_arr (bytes): The byte array that caused the error.
+        message (str): The error message.
+    """
+
     def __init__(self, byte_arr, message):
+        """
+        Constructor:
+            Initializes the CommunicationProtocolException instance.
+
+            Args:
+              byte_arr (bytes): The byte array that caused the error.
+              message (str): The error message.
+        """
+
         super.__init__(message)
 
         self.byte_arr = byte_arr
