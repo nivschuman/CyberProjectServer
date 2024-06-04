@@ -1,32 +1,13 @@
 from PasswordManager import PasswordManagerServer
-
-
-def connect_to_database_online(driver, server, database, user_id, password):
-    db_connection_string = f"Driver={driver};" \
-                           f"Server={server};" \
-                           f"Database={database};" \
-                           f"UID={user_id};"\
-                           f"PWD={password};"
-
-    return db_connection_string
-
-
-def connect_to_database_local(driver, server, database, trusted_connection):
-    db_connection_string = f'Driver={driver};' \
-                           f'Server={server};' \
-                           f'Database={database};' \
-                           f'Trusted_Connection={trusted_connection};'
-
-    return db_connection_string
+from json import load
 
 
 def main():
-    db_connection_string = connect_to_database_local("{SQL Server}",
-                                                     r"DESKTOP-GFMVUDQ\SQLEXPRESS",
-                                                     "PasswordManagerDB",
-                                                     "yes")
+    config_file = open(r"config.json")
+    config_data = load(config_file)
 
-    password_manager_server = PasswordManagerServer("0.0.0.0", 8080, db_connection_string, True)
+    password_manager_server = PasswordManagerServer(config_data["host"], config_data["port"],
+                                                    config_data["connection_string"], config_data["with_ssl"])
     password_manager_server.start_server()
 
 
